@@ -1,11 +1,16 @@
 package controllers
 
-class PlanController(nome: String, income: Double, expense : ExpenseController) {
-  private var name = nome
-  private var percTransport : Double =_
-  private var percFeeding : Double =_
-  private var percNecessary : Double =_
-  private var percLeisure : Double =_
+import controllers.exceptions.LimiteDeGastosUltrapassado
+
+class PlanController(renda: Double, gastos : ExpenseController) extends Plans {
+  var name : String = _
+  var income: Double = renda
+  var expense : ExpenseController = gastos
+  private var percTransport : Double = 0.0
+  private var percFeeding : Double = 0.0
+  private var percNecessary : Double = 0.0
+  private var percLeisure : Double = 0.0
+  private var percOthers : Double = 0.0
 
   def setName(nome : String) : Unit ={
     this.name = nome
@@ -15,50 +20,94 @@ class PlanController(nome: String, income: Double, expense : ExpenseController) 
     this.name
   }
 
-  name match {
-    case "DEFAULT" => percTransport = expense.getTransport()-income * 0.25; percFeeding = expense.getFeeding()- income * 0.25
-                      percNecessary = expense.getNecessary()-income * 0.25; percLeisure = expense.getLeisure()-income * 0.25
-    case "EASY" => percTransport = expense.getTransport()-income * 0.20; percFeeding = expense.getFeeding()-income * 0.20
-                      percNecessary = expense.getNecessary()-income * 0.20; percLeisure = expense.getLeisure()-income * 0.40
-    case "MEDIUM" => percTransport = expense.getTransport()-income * 0.20; percFeeding = expense.getFeeding()-income * 0.20
-                      percNecessary = expense.getNecessary()-income * 0.40; percLeisure = expense.getLeisure()-income * 0.20
-    case "HARD" => percTransport = expense.getTransport()-income * 0.20; percFeeding = expense.getFeeding()-income * 0.20
-                      percNecessary = expense.getNecessary()-income * 0.50; percLeisure = expense.getLeisure()-income * 0.10
-    case "INSANE" => percTransport = expense.getTransport()-income * 0.10; percFeeding = expense.getFeeding()-income * 0.10
-                      percNecessary = expense.getNecessary()-income * 0.70; percLeisure = expense.getLeisure()-income * 0.10
+  def insertExpense(newExpense : Double, kind : String): Unit = {
+    redefinePlan(income)
+    alerts(newExpense, kind)
   }
 
-  def alerts(expense : Double, kind : String): Unit = {
-    var percExpense = 0.0
+  def deleteExpense(kind : String): Unit ={
+    if(expense.validExpense(kind)) {
+      expense.listExpense().remove(kind)
+    }else{
+      println("GASTO INEXISTENTE")
+    }
+  }
 
+  def redefinePlan(incomeAnt : Double) : PlanController ={
+    if(incomeAnt > 0) {
+      definePlan(this.name, this.percTransport / income,
+        this.percFeeding / income,
+        this.percNecessary / income,
+        this.percLeisure / income,
+        this.percOthers / income)
+    }else{
+      definePlan(this.name, this.percTransport,
+        this.percFeeding,
+        this.percNecessary,
+        this.percLeisure,
+        this.percOthers)
+    }
+  }
+
+  override def definePlan(name: String, val1 : Double, val2 : Double, val3 : Double,  val4 : Double,  val5 : Double) : PlanController = {
+    this.name = name
+    name match {
+        case "DEFAULT" => if(expense.getOthers() > 0) setPlans(0.20, 0.20, 0.20, 0.20, 0.20) else setPlans(0.25, 0.25, 0.25, 0.25, 0.0)
+
+        case "EASY" => if(expense.getOthers() > 0) setPlans(0.10, 0.20, 0.10, 0.40, 0.20) else setPlans(0.20, 0.20, 0.20, 0.40, 0.0)
+
+        case "MEDIUM" => if(expense.getOthers() > 0) setPlans(0.25, 0.25, 0.25, 0.15, 0.10) else setPlans(0.25, 0.25, 0.30, 0.20, 0.0)
+
+        case "HARD" => if(expense.getOthers() > 0) setPlans(0.20, 0.20, 0.40, 0.10, 0.10) else setPlans(0.25, 0.25, 0.40, 0.10, 0.0)
+
+        case "INSANE" => if(expense.getOthers() > 0) setPlans(0.10, 0.20, 0.50, 0.10, 0.10) else setPlans(0.20, 0.25, 0.50, 0.05, 0.0)
+
+        case _ => setPlans(val1, val2, val3, val4, val5)
+
+    }
+
+    def setPlans(valor1 : Double, valor2 : Double, valor3 : Double,  valor4 : Double,  valor5 : Double) : Unit = {
+       if(income > 0){
+        percTransport = income * valor1
+        percFeeding = income * valor2
+        percNecessary = income * valor3
+        percLeisure = income * valor4
+        percOthers = income * valor5
+      }else{
+        percTransport = valor1
+        percFeeding = valor2
+        percNecessary = valor3
+        percLeisure = valor4
+        percOthers = valor5
+      }
+    }
+    return this
+  }
+
+  def verifyKind(kind : String) : Double = {
     kind match {
-      case "FEEDING" => percExpense = percFeeding
-      case "TRANSPORT" => percExpense = percTransport
-      case "NECESSARY" => percExpense = percNecessary
-      case "LEISURE" => percExpense = percLeisure
-    }
-
-    if (expense > percExpense){
-        print("VOCE ESTOUROU SEU LIMITE DE GASTOS COM " + kind)
-    }
-    else {
-        print("VOCE USOU " + expense*100 / percExpense + "% DOS SEUS LIMITE COM " + kind)
+      case "feeding" => percFeeding - expense.getExpense(kind)
+      case "transport" =>  percTransport - expense.getExpense(kind)
+      case "necessary" =>  percNecessary - expense.getExpense(kind)
+      case "leisure" =>  percLeisure - expense.getExpense(kind)
+      case _ => percOthers - expense.getExpense(kind)
     }
   }
 
+  def alerts(newExpense : Double, kind : String): Unit = {
+    if(expense.validExpense(kind) && newExpense > 0) {
+      var percExpense = verifyKind(kind)
+      if (percExpense <= 0) {
+        println("VOCE ESTOUROU SEU LIMITE DE GASTOS COM " + kind.toUpperCase)
+        println("SALDO EM " +kind.toUpperCase+" = " + percExpense)
+        //        throw LimiteDeGastosUltrapassado()
+      }
+      else {
+        var valor = Conversor().converte((expense.getExpense(kind) * 100) / (expense.getExpense(kind)+percExpense), 2)
+        println("VOCE USOU " + valor + "% DO SEU LIMITE COM " + kind.toUpperCase)
+      }
+    }else{
+      println("GASTO INVALIDO")
+    }
+  }
 }
-
-
-
-/*
-    case "DEFAULT" => expense.setTransport(income * 0.25); expense.setFeeding(income * 0.25)
-                      expense.setNecessary(income * 0.25); expense.setLeisure(income * 0.25)
-    case "EASY" => expense.setTransport(income * 0.20); expense.setFeeding(income * 0.20)
-                      expense.setNecessary(income * 0.20); expense.setLeisure(income * 0.40)
-    case "MEDIUM" => expense.setTransport(income * 0.20); expense.setFeeding(income * 0.20)
-                      expense.setNecessary(income * 0.40); expense.setLeisure(income * 0.20)
-    case "HARD" => expense.setTransport(income * 0.20); expense.setFeeding(income * 0.20)
-                      expense.setNecessary(income * 0.50); expense.setLeisure(income * 0.10)
-    case "INSANE" => expense.setTransport(income * 0.10); expense.setFeeding(income * 0.10)
-                      expense.setNecessary(income * 0.70); expense.setLeisure(income * 0.10)
-*/
